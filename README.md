@@ -1,65 +1,83 @@
-# StreamWatch
+# StreamWatch — The Signal Observatory
 
-A compact Java 17 desktop micro-project: **Real-Time Anomaly Detection in Big Data Streams using Sliding Window, Hashing and Heap Data Structures**. Four files, no dependencies, no build tool, no internet connection needed to run.
+A Java 17 anomaly-detection micro-project with an animated, responsive browser interface. The detector uses the report's sliding window, hash table and heap. HTML, CSS and JavaScript live together in **one `index.html` file**; Java performs all statistical calculations and anomaly ranking.
 
-## Run
+## Run locally (no dependencies)
 
-Install a JDK version 17 or newer. Open a terminal in this folder:
+Install JDK 17 or newer. Open a terminal **inside this project folder**:
 
 ```sh
-javac Detector.java StreamWatch.java DetectorTest.java
+javac *.java
 java StreamWatch
 ```
 
-A graphical desktop is required. In IntelliJ, Eclipse, or VS Code, open this folder, select JDK 17+, and run `StreamWatch.main`. GitHub stores the source; this Java desktop app does not run on GitHub Pages.
+Keep that terminal open and visit **http://localhost:8080** in your browser. Stop the server with Ctrl+C. This replaces the earlier Swing desktop interface; the command stays the same. The server reads `index.html` on startup, so restart after editing the page.
 
-## Demonstration
+## A beginner-friendly demonstration
 
-1. Select **Start stream**. Three simulated sensors produce one reading every 500 ms.
-2. Allow at least 18 readings so every sensor has five prior observations.
-3. Click **Inject spike**. Inspect the orange marker and ranked alert.
-4. Pause and inspect the entity counts, means, deviations, and recent arrivals.
-5. Enter a sensor ID and numeric value to add your own record.
-6. Change window capacity, K, or threshold; **Apply & reset** starts a fresh session.
-7. Open **02 / Field notes** for two explanatory paragraphs, algorithms, complexity, and author credits.
+1. Open **Learn the ropes** for four short lessons explaining the baseline, unusual readings, settings and structures.
+2. In **Observatory**, press **Start demo**. Three simulated sensors send readings near 50.
+3. Wait about 10 seconds. Each sensor needs five prior readings before scoring starts.
+4. **Show an unusual reading** becomes available after all three demo sensors have a baseline. It adds a deliberately high test value; inspect the orange diamond and alert ranking.
+5. Pause to inspect the hash table and latest arrivals.
+6. Optional controls are collapsed: **Fine-tune the experiment** explains window size, Top-K and sensitivity; **Add your own reading** accepts manual sensor values.
+7. **Project notes** contains two introductory paragraphs, separate spacious tables for data structures and algorithms, complexity, scope and author credits.
 
-A small pixel sentinel moves with incoming events. Pausing freezes updates for inspection. Window settings do not take effect until Apply & reset. Counts labelled session alerts include expired alerts; the ranking only includes active-window alerts. A generated spike during warm-up is not classified until the baseline is ready.
+Changing settings with Apply & reset clears this session. Lower thresholds are more sensitive. K changes the number of displayed alerts, not the detection rule. Small windows may never hold enough history for all three demo sensors; 60 is the recommended teaching default. Session alert totals include expired alerts, while ranking includes only current-window alerts.
 
-## Files and responsibilities
+## Hosting — read this before deploying
 
-| File | Responsibility |
+**Vercel static hosting displays the HTML interface but does not run this Java server.** The page clearly reports a disconnected detector and disables live controls when `/api` is unavailable. The tutorial and project notes remain usable; no fake JavaScript detection is substituted.
+
+To share the fully working application online, deploy the included Dockerfile to a service that runs Java/Docker web servers. Serve both the page and `/api` from that same Java service. It listens on the hosting service's `PORT` environment variable and uses `HOST=0.0.0.0` inside the container. Use the host's HTTPS URL. You do not need separate frontend/backend hosting or CORS configuration.
+
+Optional local Docker commands:
+
+```sh
+docker build -t streamwatch .
+docker run --rm -p 8080:8080 streamwatch
+```
+
+The Dockerfile is provided for deployment; a hosted service has not been provisioned by this repository. For static-only Vercel preview, use repository root as the output directory and no build command. That preview alone cannot run detection.
+
+## Compact structure
+
+| File | Purpose |
 | --- | --- |
-| `Detector.java` | Sliding window, hash state, Z-score detection, bounded min-heap ranking |
-| `StreamWatch.java` | Swing dashboard, signal animation, manual/generated input, information screen |
-| `DetectorTest.java` | Validation, warm-up, expiration and differential correctness tests |
-| `README.md` | Setup, demonstration, design and report coverage |
+| `Detector.java` | FIFO window, hash state, rolling statistics, Z-score, heap selection |
+| `StreamWatch.java` | Standard-library HTTP server and JSON API; replaces the Swing UI |
+| `index.html` | All browser markup, styling, animations, tutorial and controls |
+| `DetectorTest.java` | 7,849 correctness checks including 2,000 randomized reference steps |
+| `README.md` | Setup, teaching guide, design and limitations |
+| `Dockerfile` | Optional Java hosting recipe |
+| `.gitignore` | Excludes compiled classes and OS metadata |
 
-The UI is intentionally separate from the algorithm. Java standard-library components provide the three required data structures: `ArrayDeque`, `HashMap`, and `PriorityQueue`. Lists and presentation ordering are incidental display helpers, not additional project algorithms.
+There are only three application source files. No frameworks, package manager, external fonts, CDNs, images or third-party Java libraries are needed. The interface includes a CSS pixel sentinel, moving signal particles, a chart sweep, page transitions and tutorial tiles. Reduced-motion preferences disable decorative animations. Navigating away from the lab or hiding the tab pauses generation.
 
-## Detection and proposed flow
+## Data and algorithms
 
-Input → score using prior window hash state → evict oldest if full → update window and hash state → select active Top-K with heap → display.
+Incoming reading → score against prior hash/window state → evict oldest if full → update hash state and append → rebuild active Top-K heap → display.
 
-The report leaves the anomaly rule unspecified. This implementation chooses a per-entity absolute Z-score. A baseline needs five prior readings of that entity. Score = `abs(value - mean) / max(population standard deviation, 1.0)`. A score at or above the configured threshold is anomalous. The one-unit floor handles constant baselines and avoids division by zero. Values must be finite and within ±1,000,000; entity IDs allow 1–20 ASCII letters, digits, underscores or hyphens.
+- **Sliding window / ArrayDeque:** fixed-size FIFO of the newest W events.
+- **Hash table / HashMap:** sensor ID maps to count, mean and M2 (sum of squared deviations). Welford add/remove updates maintain statistics without rescanning the history.
+- **Min-heap / PriorityQueue:** retain the K most significant active anomalies during each snapshot. A larger score replaces the minimum; equal scores favor newer IDs.
+- **Anomaly rule:** absolute Z-score = `abs(value - mean) / max(population standard deviation, 1)`. At least five prior readings for that sensor are required. Score at or above the threshold is flagged.
 
-Scoring precedes insertion so an outlier cannot dilute its own baseline. Welford's incremental and removal equations maintain count, mean and M2. Once classified, a record keeps its arrival-time score until it expires; historical records are not reclassified. Repeated extreme values can change the baseline, a normal limitation of this simple statistical model. Rare entities need sufficient warm-up and are not automatically treated as anomalous.
-
-For each display snapshot, scan the active window and insert anomalous records into a min-heap of at most K elements. When full, replace its minimum only for a more significant candidate. Equal scores favor newer record IDs. Polling and reversing produces descending rank. Rebuilding from the window ensures expired winners are removed and previously unranked candidates can take their place.
+Scoring precedes insertion so an outlier cannot dilute its own baseline. Arrival scores remain fixed until expiration. The one-unit standard-deviation floor handles constant baselines. Repeated extreme values can shift the baseline; rare/new sensors must warm up. This is a simple educational statistical detector, not a trained anomaly model.
 
 ## Complexity
 
-- Window insertion/eviction: O(1) amortized; hash updates and scoring: O(1) average.
-- One heap candidate: O(log K); complete exact current-window ranking: O(W log K), plus O(K log K) extraction, bounded by O(W log K) when K ≤ W (use log(K+1) for K=1).
-- Persistent detector state: O(W + U); temporary heap: O(K). Display snapshots also use O(W + U + K). U ≤ W.
-- Display orders entities in O(U log U) and draws the signal in O(W).
+Window updates are O(1) amortized; hashing and scoring are O(1) average. One heap candidate is O(log(K+1)); exact active-window ranking is O(W log(K+1)). Rebuilding ensures expired winners are replaced by the next eligible active candidates. O(log K) alone would not describe this complete snapshot.
 
-The report's expected O(log K) heap cost describes an individual update. It does not include maintaining exact Top-K under expiration. This project explicitly reports the additional bounded-window scan rather than claiming O(log K) for the complete dashboard update.
+Analysis memory is O(W + U + K), with U ≤ W. Display snapshots also use bounded O(W + U + K) memory. Entity presentation ordering costs O(U log U); chart drawing costs O(W). No full stream history is retained.
 
-## Report coverage
+## Sessions and scope
 
-Problem and motivation: avoid retaining and repeatedly processing the full stream history. Aim and objectives: implement and explain recent-window analysis, fast entity tracking, anomaly significance and prioritized output. Proposed system and functional requirements: generated/manual stream input, fixed-size window, hash frequency/statistical state, anomaly detection and Top-K output. Expected outcomes: working demonstration, algorithm analysis and automated test cases. The information screen includes the project explanation, authors, data structures and algorithms.
+Each browser tab creates an independent random session ID. Reloading starts a fresh experiment. The server keeps at most 128 sessions and drops sessions idle for 30 minutes on subsequent requests. Restarting the server clears all memory. Requests are serialized so updates cannot race. Browser generation is one request at a time and pauses on navigation/tab hiding. This is a single-instance teaching server, not a production multi-node platform; deployment should use one instance, or it would need shared session storage/sticky routing.
 
-Java replaces the report's proposed Python language at the user's request. This is a single-process educational simulator, with bounded memory and small configurable windows. External live platforms, databases, CSV/JSON ingestion, distributed processing and production-scale throughput benchmarking are extensions, not implemented features. No dataset is needed. State is in memory and resets when the application closes.
+Inputs are validated by Java: IDs use 1–20 ASCII letters, digits, underscores or hyphens; numeric values are finite and within ±1,000,000; W is 10–500, K is 1–W and threshold is 1–10. The browser offers simpler teaching presets. The server serves only the HTML entry page and API; it does not expose project source files.
+
+The report's functional requirements are covered: generated/manual sequential input, fixed window, hash-based state, anomaly significance and Top-K output. Java replaces its proposed Python language as requested. External feeds, CSV/JSON uploads, databases and production-scale performance are extensions, not implemented features.
 
 ## Verification
 
@@ -67,14 +85,10 @@ Java replaces the report's proposed Python language at the user's request. This 
 java -ea DetectorTest
 ```
 
-Tests cover constant baselines, warm-up, spikes, finite scores, expired entities and alerts, invalid input without mutation, bounded state, and 2,000 deterministic randomized steps against a full-scan statistics and sorted-ranking oracle. To render a deterministic dashboard preview without opening a window:
-
-```sh
-java -Djava.awt.headless=true StreamWatch --preview preview.png
-```
+The detector tests check warm-up, constant baselines, spikes, invalid input without mutation, expiration, bounded memory and differential statistics/ranking correctness. The browser and HTTP integration were also checked for connection, streaming, spike injection, settings/reset, manual input and independent sessions.
 
 ## Academic credits
 
-Group 13: **Pavankumar Thatipamula (61), Yash Satam (54), Neev Patel (40)**, as listed in the supplied report. Guide: **Mrs Bhagyashree Patil**. Artificial Intelligence & Data Science, Shah and Anchor Kutchhi Engineering College. Semester III, ADCOR2PC202, academic year 2026–27.
+**Group 13:** Pavankumar Thatipamula (61), Yash Satam (54), Neev Patel (40), as listed in the supplied report. Guide: Mrs Bhagyashree Patil. Artificial Intelligence & Data Science, Shah and Anchor Kutchhi Engineering College. Semester III, ADCOR2PC202, academic year 2026–27.
 
-Background references from the report: Cormen et al., *Introduction to Algorithms*; Reema Thareja, *Data Structures Using C*; Leskovec, Rajaraman and Ullman, *Mining of Massive Datasets*. This implementation uses standard Java collections and Swing.
+Report background references: Cormen et al., *Introduction to Algorithms*; Reema Thareja, *Data Structures Using C*; Leskovec, Rajaraman and Ullman, *Mining of Massive Datasets*.
